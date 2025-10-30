@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ImageWatermarker": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\temp\\ka\\images\" \"C:\\temp\\ka\\watermark.jpg\" \"C:\\temp\\ka\\watermarked\""
+    }
+  }
+}
