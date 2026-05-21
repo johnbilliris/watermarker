@@ -37,10 +37,13 @@ Then enter:
 - Source folder: `C:\temp\test-images`
 - Watermark image: `C:\temp\watermark.png`
 - Output folder: `C:\temp\watermarked`
-- Output image quality: `95` (or press Enter for default)
+- Output image quality: `100` (or press Enter for default)
 - Opacity: `0.7` (or press Enter for default)
 - Margin: `20` (or press Enter for default)
 - Position: Select from 1-9 or enter name like `TopRight` (or press Enter for default BottomRight)
+- Output width (px): press Enter to keep source width, or type a number (e.g. `1920`)
+- Output height (px): press Enter to keep source height, or type a number (e.g. `1080`)
+- Preserve orientation: when both width and height are provided, you'll be asked `y/N` to keep the source's portrait/landscape orientation
 
 #### Option B: Command Line Mode
 ```bash
@@ -52,6 +55,20 @@ dotnet run -- "C:\temp\test-images" "C:\temp\watermark.png" "C:\temp\watermarked
 ```bash
 cd C:\code\watermarker
 dotnet run -- "C:\temp\test-images" "C:\temp\watermark.png" "C:\temp\watermarked" --outputimagequality=85 --opacity=0.5 --margin=30 --position=TopRight
+```
+
+#### Option D: Resize Output Images
+```bash
+# Resize all output images to 1920x1080
+dotnet run -- "C:\temp\test-images" "C:\temp\watermark.png" "C:\temp\watermarked" --width=1920 --height=1080
+
+# Resize while preserving each image's orientation:
+#   - portrait sources will be 1080 x 1920
+#   - landscape sources will be 1920 x 1080
+dotnet run -- "C:\temp\test-images" "C:\temp\watermark.png" "C:\temp\watermarked" --width=1920 --height=1080 --preserve-orientation
+
+# Resize by width only - height is scaled proportionally
+dotnet run -- "C:\temp\test-images" "C:\temp\watermark.png" "C:\temp\watermarked" --width=1280
 ```
 
 ### 5. Check Results
@@ -89,7 +106,7 @@ ImageWatermarker.exe "C:\Photos" "C:\logo.png" "C:\Output" --outputimagequality=
 
 2. **Image Quality**:
    - Source images maintain full quality
-   - JPEG images saved at configurable quality (default 95%)
+   - JPEG images saved at configurable quality (default 100%)
    - Original resolution and DPI preserved
    - All EXIF metadata preserved (camera settings, GPS, etc.)
 
@@ -99,12 +116,17 @@ ImageWatermarker.exe "C:\Photos" "C:\logo.png" "C:\Output" --outputimagequality=
    - **Sides**: CenterLeft, CenterRight
    - Use position names or numbers (1-9) in interactive mode
 
-4. **Performance**:
+4. **Resizing & Orientation**:
+   - Use `--width` and/or `--height` to set output dimensions; omit both to keep the source size
+   - Supplying only one dimension scales the other proportionally to preserve aspect ratio
+   - Add `--preserve-orientation` (with both `--width` and `--height`) to keep the source's portrait/landscape orientation. The larger of the two values is mapped to the long edge of the source image and the smaller to the short edge.
+
+5. **Performance**:
    - Processing speed depends on image size and count
    - Large images (>10MP) may take longer
    - Progress is shown in real-time
 
-5. **Batch Processing**:
+6. **Batch Processing**:
    - No limit on number of files
    - Skips unsupported formats automatically
    - Failed files reported at end
@@ -119,7 +141,7 @@ Found 5 images (12.3 MB)
 File types: .jpg (3), .png (2)
 Watermark: C:\temp\watermark.png
 Output folder: C:\temp\watermarked
-Quality: 95%, Opacity: 70%, Margin: 20px, Position: BottomRight
+Quality: 100%, Opacity: 70%, Margin: 20px, Position: BottomRight
 
 Proceed with watermarking? (y/N): y
 

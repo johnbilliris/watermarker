@@ -36,20 +36,26 @@ namespace ImageWatermarker
         /// <param name="margin">Margin from the edges in pixels</param>
         /// <param name="position">Position where the watermark will be placed</param>
         public void AddWatermark(string sourceImagePath, string watermarkImagePath, string outputImagePath,
-            long outputImageQuality = 95L, float opacity = 0.7f, int margin = 20, WatermarkPosition position = WatermarkPosition.BottomRight)
+            long outputImageQuality = 100L, float opacity = 0.7f, int margin = 20, WatermarkPosition position = WatermarkPosition.BottomRight,
+            int? targetWidth = null, int? targetHeight = null, bool preserveOrientation = false)
         {
             if (!File.Exists(sourceImagePath))
                 throw new FileNotFoundException($"Source image not found: {sourceImagePath}");
-            
-            if (!File.Exists(watermarkImagePath))
+
+            bool skipWatermark = IsNoneWatermark(watermarkImagePath);
+
+            if (!skipWatermark && !File.Exists(watermarkImagePath))
                 throw new FileNotFoundException($"Watermark image not found: {watermarkImagePath}");
 
             using var sourceImage = Image.FromFile(sourceImagePath);
-            using var watermarkImage = Image.FromFile(watermarkImagePath);
-            
-            // Create a new bitmap with the same dimensions and pixel format as the source
-            using var outputImage = new Bitmap(sourceImage.Width, sourceImage.Height, sourceImage.PixelFormat);
-            
+            using var watermarkImage = skipWatermark ? null : Image.FromFile(watermarkImagePath);
+
+            var (outWidth, outHeight) = ResolveOutputDimensions(
+                sourceImage.Width, sourceImage.Height, targetWidth, targetHeight, preserveOrientation);
+
+            // Create a new bitmap with the resolved output dimensions and source pixel format
+            using var outputImage = new Bitmap(outWidth, outHeight, sourceImage.PixelFormat);
+
             // Set the resolution to match the source image
             outputImage.SetResolution(sourceImage.HorizontalResolution, sourceImage.VerticalResolution);
             
@@ -61,34 +67,37 @@ namespace ImageWatermarker
             graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
             graphics.CompositingQuality = CompositingQuality.HighQuality;
 
-            // Draw the original image
-            graphics.DrawImage(sourceImage, 0, 0, sourceImage.Width, sourceImage.Height);
-            
-            // Calculate watermark size and position
-            bool isLandscape = sourceImage.Width >= sourceImage.Height;
+            // Draw the original image (scaled to output dimensions)
+            graphics.DrawImage(sourceImage, 0, 0, outWidth, outHeight);
 
-            var watermarkWidth = isLandscape ? Math.Min(watermarkImage.Width, sourceImage.Width / 4)    // Max 25% of image width
-                                              : Math.Min(watermarkImage.Width, sourceImage.Width / 3);  // Max 33% of image width
-            var watermarkHeight = (int)(watermarkImage.Height * ((float)watermarkWidth / watermarkImage.Width));
-            
-            // Calculate position based on the specified position parameter
-            var (x, y) = CalculateWatermarkPosition(sourceImage.Width, sourceImage.Height, 
-                watermarkWidth, watermarkHeight, margin, position);
-            
-            // Create color matrix for opacity
-            var colorMatrix = new ColorMatrix
+            if (!skipWatermark && watermarkImage != null)
             {
-                Matrix33 = opacity // Set the alpha (opacity) value
-            };
-            
-            var imageAttributes = new ImageAttributes();
-            imageAttributes.SetColorMatrix(colorMatrix, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
-            
-            // Draw the watermark with opacity
-            graphics.DrawImage(watermarkImage, 
-                new Rectangle(x, y, watermarkWidth, watermarkHeight),
-                0, 0, watermarkImage.Width, watermarkImage.Height,
-                GraphicsUnit.Pixel, imageAttributes);
+                // Calculate watermark size and position based on output dimensions
+                bool isLandscape = outWidth >= outHeight;
+
+                var watermarkWidth = isLandscape ? Math.Min(watermarkImage.Width, outWidth / 4)    // Max 25% of image width
+                                                  : Math.Min(watermarkImage.Width, outWidth / 3);  // Max 33% of image width
+                var watermarkHeight = (int)(watermarkImage.Height * ((float)watermarkWidth / watermarkImage.Width));
+
+                // Calculate position based on the specified position parameter
+                var (x, y) = CalculateWatermarkPosition(outWidth, outHeight,
+                    watermarkWidth, watermarkHeight, margin, position);
+
+                // Create color matrix for opacity
+                var colorMatrix = new ColorMatrix
+                {
+                    Matrix33 = opacity // Set the alpha (opacity) value
+                };
+
+                var imageAttributes = new ImageAttributes();
+                imageAttributes.SetColorMatrix(colorMatrix, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+
+                // Draw the watermark with opacity
+                graphics.DrawImage(watermarkImage,
+                    new Rectangle(x, y, watermarkWidth, watermarkHeight),
+                    0, 0, watermarkImage.Width, watermarkImage.Height,
+                    GraphicsUnit.Pixel, imageAttributes);
+            }
 
             // Copy all metadata (EXIF, etc.) from source image to output image
             PreserveImageMetadata(sourceImage, outputImage);
@@ -100,6 +109,46 @@ namespace ImageWatermarker
             PreserveFileProperties(sourceImagePath, outputImagePath);
         }
         
+        /// <summary>
+        /// Resolves the final output dimensions based on target width/height and preserve-orientation flag.
+        /// </summary>
+        private static (int width, int height) ResolveOutputDimensions(
+            int sourceWidth, int sourceHeight, int? targetWidth, int? targetHeight, bool preserveOrientation)
+        {
+            // No resize requested
+            if (!targetWidth.HasValue && !targetHeight.HasValue)
+                return (sourceWidth, sourceHeight);
+
+            // Only one supplied: scale proportionally to preserve aspect ratio
+            if (targetWidth.HasValue && !targetHeight.HasValue)
+            {
+                int w = Math.Max(1, targetWidth.Value);
+                int h = Math.Max(1, (int)Math.Round(sourceHeight * ((double)w / sourceWidth)));
+                return (w, h);
+            }
+            if (targetHeight.HasValue && !targetWidth.HasValue)
+            {
+                int h = Math.Max(1, targetHeight.Value);
+                int w = Math.Max(1, (int)Math.Round(sourceWidth * ((double)h / sourceHeight)));
+                return (w, h);
+            }
+
+            // Both supplied
+            int reqW = Math.Max(1, targetWidth!.Value);
+            int reqH = Math.Max(1, targetHeight!.Value);
+
+            if (!preserveOrientation)
+                return (reqW, reqH);
+
+            int larger = Math.Max(reqW, reqH);
+            int smaller = Math.Min(reqW, reqH);
+
+            // Source portrait: height >= width -> height should be the larger dimension
+            // Source landscape: width >= height -> width should be the larger dimension
+            bool sourceIsPortrait = sourceHeight > sourceWidth;
+            return sourceIsPortrait ? (smaller, larger) : (larger, smaller);
+        }
+
         /// <summary>
         /// Saves the image maintaining the original format and quality settings
         /// </summary>
@@ -156,6 +205,16 @@ namespace ImageWatermarker
         {
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
             return GetSupportedExtensions().Contains(extension);
+        }
+
+        /// <summary>
+        /// Returns true when the watermark path is the literal value "None" (case-insensitive),
+        /// indicating that no watermark should be applied.
+        /// </summary>
+        public static bool IsNoneWatermark(string? watermarkImagePath)
+        {
+            return !string.IsNullOrWhiteSpace(watermarkImagePath)
+                && string.Equals(watermarkImagePath.Trim(), "None", StringComparison.OrdinalIgnoreCase);
         }
 
 

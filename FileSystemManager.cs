@@ -35,7 +35,8 @@ namespace ImageWatermarker
         /// <returns>ProcessingResult with statistics</returns>
         public ProcessingResult ProcessFolder(string sourceFolderPath, string watermarkImagePath,
             string outputFolderPath, long outputImageQuality,
-            float opacity = 0.7f, int margin = 20, WatermarkPosition position = WatermarkPosition.BottomRight)
+            float opacity = 0.7f, int margin = 20, WatermarkPosition position = WatermarkPosition.BottomRight,
+            int? targetWidth = null, int? targetHeight = null, bool preserveOrientation = false)
         {
             ValidateInputs(sourceFolderPath, watermarkImagePath, outputFolderPath);
             
@@ -65,7 +66,8 @@ namespace ImageWatermarker
                     ProgressUpdated?.Invoke(i + 1, imageFiles.Count, fileName);
                     
                     // Process the image
-                    _watermarkProcessor.AddWatermark(sourceFile, watermarkImagePath, outputFile, outputImageQuality, opacity, margin, position);
+                    _watermarkProcessor.AddWatermark(sourceFile, watermarkImagePath, outputFile, outputImageQuality, opacity, margin, position,
+                        targetWidth, targetHeight, preserveOrientation);
                     
                     result.ProcessedFiles++;
                     Console.WriteLine($"[{i + 1}/{imageFiles.Count}] Processed: {fileName}");
@@ -129,12 +131,15 @@ namespace ImageWatermarker
                 
             if (!Directory.Exists(sourceFolderPath))
                 throw new DirectoryNotFoundException($"Source folder not found: {sourceFolderPath}");
-                
-            if (!File.Exists(watermarkImagePath))
-                throw new FileNotFoundException($"Watermark image not found: {watermarkImagePath}");
-                
-            if (!WatermarkProcessor.IsSupportedImageFile(watermarkImagePath))
-                throw new ArgumentException($"Watermark file is not a supported image format: {watermarkImagePath}");
+
+            if (!WatermarkProcessor.IsNoneWatermark(watermarkImagePath))
+            {
+                if (!File.Exists(watermarkImagePath))
+                    throw new FileNotFoundException($"Watermark image not found: {watermarkImagePath}");
+
+                if (!WatermarkProcessor.IsSupportedImageFile(watermarkImagePath))
+                    throw new ArgumentException($"Watermark file is not a supported image format: {watermarkImagePath}");
+            }
             
             // Check if output folder is inside source folder (to prevent infinite loops)
             var fullSourcePath = Path.GetFullPath(sourceFolderPath);

@@ -10,6 +10,8 @@ A C# console application that adds watermarks to all images in a folder while pr
 - **Batch Processing**: Processes entire folders of images automatically with progress tracking
 - **Multiple Formats**: Supports JPEG, PNG, BMP, GIF, TIFF formats
 - **Flexible Positioning**: 9 position options - corners, centers, and edges with configurable margin
+- **Optional Resizing**: Resize output images to a target width and/or height (aspect-ratio preserved when only one dimension is provided)
+- **Orientation Preservation**: When resizing, optionally keep the source's portrait/landscape orientation
 - **Opacity Control**: Adjustable watermark transparency (0.0 to 1.0)
 - **Quality Control**: Configurable output image quality (1-100) for JPEG files
 - **Progress Tracking**: Real-time progress reporting during batch processing
@@ -49,10 +51,13 @@ You'll be prompted to enter:
 - Source folder path (folder containing images to watermark)
 - Watermark image path (your logo/watermark file)
 - Output folder path (where watermarked images will be saved)
-- Output image quality (optional, 1-100 for JPEG files, default: 95)
+- Output image quality (optional, 1-100 for JPEG files, default: 100)
 - Opacity (optional, 0.0 to 1.0, default: 0.7)
 - Margin (optional, pixels from edges, default: 20)
 - Position (optional, 9 available positions, default: BottomRight)
+- Width (optional, target output width in pixels; default: source width)
+- Height (optional, target output height in pixels; default: source height)
+- Preserve orientation (optional, y/N; only meaningful when both width and height are provided)
 
 ### Command Line Mode
 
@@ -66,10 +71,13 @@ dotnet run -- <source_folder> <watermark_image> <output_folder> [options]
 - `output_folder`: Path to folder where watermarked images will be saved
 
 **Options:**
-- `--outputimagequality=<value>`: Output image quality (1-100, default: 95)
+- `--outputimagequality=<value>`: Output image quality (1-100, default: 100)
 - `--opacity=<value>`: Watermark opacity (0.0 to 1.0, default: 0.7)
 - `--margin=<pixels>`: Margin from edges (default: 20)
 - `--position=<position>`: Watermark position (default: BottomRight)
+- `--width=<pixels>`: Target output image width (default: source width)
+- `--height=<pixels>`: Target output image height (default: source height)
+- `--preserve-orientation`: Preserve the source image orientation when resizing. Used together with `--width` and `--height`. If the source image is portrait, the larger of the two values becomes the output height and the smaller becomes the output width. If the source is landscape, the larger value becomes the output width and the smaller becomes the output height.
 
 **Available Positions:**
 TopLeft, TopCenter, TopRight, CenterLeft, CenterCenter, CenterRight, BottomLeft, BottomCenter, BottomRight
@@ -82,6 +90,15 @@ dotnet run -- "C:\Photos" "C:\watermark.png" "C:\Output"
 
 # With custom settings and top-right position
 dotnet run -- "C:\Photos" "C:\logo.png" "C:\Output" --outputimagequality=85 --opacity=0.5 --margin=30 --position=TopRight
+
+# Resize all output images to 1920x1080 (no orientation preservation)
+dotnet run -- "C:\Photos" "C:\logo.png" "C:\Output" --width=1920 --height=1080
+
+# Resize while preserving each image's portrait/landscape orientation
+dotnet run -- "C:\Photos" "C:\logo.png" "C:\Output" --width=1920 --height=1080 --preserve-orientation
+
+# Resize by width only - height is scaled proportionally to preserve aspect ratio
+dotnet run -- "C:\Photos" "C:\logo.png" "C:\Output" --width=1280
 
 # Using quotes for paths with spaces
 dotnet run -- "C:\My Photos" "C:\Company Logo.png" "C:\Watermarked Images"
@@ -99,11 +116,12 @@ dotnet run -- "C:\My Photos" "C:\Company Logo.png" "C:\Watermarked Images"
 
 1. **Image Quality Preservation**: Uses high-quality rendering settings and maintains original pixel format and resolution
 2. **Watermark Sizing**: Automatically scales watermark to maximum 25% of image width (landscape) or 33% (portrait) while maintaining aspect ratio
-3. **Flexible Positioning**: Places watermark in any of 9 positions (corners, centers, edges) with specified margin
-4. **Opacity**: Applies specified transparency to watermark using color matrix transformation
-5. **Format Handling**: Saves images in their original format with configurable quality settings (default 95% for JPEG)
-6. **Metadata Preservation**: Copies all EXIF data, GPS information, camera settings, and other image metadata
-7. **File Properties Preservation**: Copies creation time, modification time, last access time, and file attributes from source to output file
+3. **Optional Resizing**: When `--width` and/or `--height` are provided, the output image is rendered at the requested dimensions using high-quality bicubic interpolation. If only one dimension is supplied, the other is scaled proportionally. When `--preserve-orientation` is used together with both dimensions, the orientation (portrait/landscape) of the source image is retained in the output.
+4. **Flexible Positioning**: Places watermark in any of 9 positions (corners, centers, edges) with specified margin
+5. **Opacity**: Applies specified transparency to watermark using color matrix transformation
+6. **Format Handling**: Saves images in their original format with configurable quality settings (default 100% for JPEG)
+7. **Metadata Preservation**: Copies all EXIF data, GPS information, camera settings, and other image metadata
+8. **File Properties Preservation**: Copies creation time, modification time, last access time, and file attributes from source to output file
 
 ## Technical Details
 
@@ -118,7 +136,7 @@ dotnet run -- "C:\My Photos" "C:\Company Logo.png" "C:\Watermarked Images"
 - Maintains original image resolution (DPI)
 - Preserves pixel format and color depth
 - Uses high-quality interpolation and smoothing
-- Configurable output quality for JPEG files (1-100, default: 95)
+- Configurable output quality for JPEG files (1-100, default: 100)
 - Optimized encoding parameters for each format
 - No unnecessary compression or quality loss
 - Preserves all EXIF metadata (camera settings, GPS, timestamps)
@@ -155,7 +173,7 @@ Found 150 images (45.2 MB)
 File types: .jpg (120), .png (25), .bmp (5)
 Watermark: C:\logo.png
 Output folder: C:\Watermarked
-Quality: 95%, Opacity: 70%, Margin: 20px, Position: BottomRight
+Quality: 100%, Opacity: 70%, Margin: 20px, Position: BottomRight
 
 Proceed with watermarking? (y/N): y
 

@@ -80,7 +80,21 @@ namespace ImageWatermarker
             
             Console.WriteLine($"Watermark: {config.WatermarkImage}");
             Console.WriteLine($"Output folder: {config.OutputFolder}");
-            Console.WriteLine($"Quality: {config.OutputImageQuality}%, Opacity: {config.Opacity:P0}, Margin: {config.Margin}px, Position: {config.Position}");
+            if (WatermarkProcessor.IsNoneWatermark(config.WatermarkImage))
+            {
+                Console.WriteLine($"Quality: {config.OutputImageQuality}% (watermarking disabled)");
+            }
+            else
+            {
+                Console.WriteLine($"Quality: {config.OutputImageQuality}%, Opacity: {config.Opacity:P0}, Margin: {config.Margin}px, Position: {config.Position}");
+            }
+
+            if (config.Width.HasValue || config.Height.HasValue)
+            {
+                var w = config.Width.HasValue ? config.Width.Value.ToString() : "auto";
+                var h = config.Height.HasValue ? config.Height.Value.ToString() : "auto";
+                Console.WriteLine($"Resize: {w} x {h}{(config.PreserveOrientation ? " (preserve orientation)" : string.Empty)}");
+            }
             
             if (folderInfo.TotalImages == 0)
             {
@@ -106,7 +120,10 @@ namespace ImageWatermarker
                 config.OutputImageQuality,
                 config.Opacity,
                 config.Margin,
-                config.Position
+                config.Position,
+                config.Width,
+                config.Height,
+                config.PreserveOrientation
             );
             
             // Show results
@@ -172,9 +189,9 @@ namespace ImageWatermarker
                 }
                 
                 // Optional parameters
-                Console.Write("Enter output image quality (1-100, default 95): ");
+                Console.Write("Enter output image quality (1-100, default 100): ");
                 var qualityInput = Console.ReadLine()?.Trim();
-                var outputImageQuality = 95L;
+                var outputImageQuality = 100L;
 
                 if (!string.IsNullOrEmpty(qualityInput) && long.TryParse(qualityInput, out var parsedQuality))
                 {
@@ -230,7 +247,32 @@ namespace ImageWatermarker
                         }
                     }
                 }
-                
+
+                // Optional resize parameters
+                Console.Write("Enter output width in pixels (optional, press Enter to keep source width): ");
+                var widthInput = Console.ReadLine()?.Trim();
+                int? width = null;
+                if (!string.IsNullOrEmpty(widthInput) && int.TryParse(widthInput, out var parsedWidth) && parsedWidth > 0)
+                {
+                    width = parsedWidth;
+                }
+
+                Console.Write("Enter output height in pixels (optional, press Enter to keep source height): ");
+                var heightInput = Console.ReadLine()?.Trim();
+                int? height = null;
+                if (!string.IsNullOrEmpty(heightInput) && int.TryParse(heightInput, out var parsedHeight) && parsedHeight > 0)
+                {
+                    height = parsedHeight;
+                }
+
+                bool preserveOrientation = false;
+                if (width.HasValue && height.HasValue)
+                {
+                    Console.Write("Preserve source orientation when resizing? (y/N): ");
+                    var poInput = Console.ReadLine()?.Trim().ToLowerInvariant();
+                    preserveOrientation = poInput == "y" || poInput == "yes";
+                }
+
                 return new WatermarkConfig
                 {
                     SourceFolder = sourceFolder,
@@ -239,7 +281,10 @@ namespace ImageWatermarker
                     OutputImageQuality = outputImageQuality,
                     Opacity = opacity,
                     Margin = margin,
-                    Position = position
+                    Position = position,
+                    Width = width,
+                    Height = height,
+                    PreserveOrientation = preserveOrientation
                 };
             }
             catch (Exception ex)
@@ -291,6 +336,22 @@ namespace ImageWatermarker
                         Console.WriteLine($"Invalid position '{arg[11..]}', using default BottomRight");
                     }
                 }
+                else if (arg.StartsWith("--width=") && int.TryParse(arg[8..], out var width))
+                {
+                    config.Width = Math.Max(1, width);
+                }
+                else if (arg.StartsWith("--height=") && int.TryParse(arg[9..], out var height))
+                {
+                    config.Height = Math.Max(1, height);
+                }
+                else if (arg == "--preserve-orientation" ||
+                         (arg.StartsWith("--preserve-orientation=") && bool.TryParse(arg[23..], out _)))
+                {
+                    if (arg == "--preserve-orientation")
+                        config.PreserveOrientation = true;
+                    else if (bool.TryParse(arg[23..], out var po))
+                        config.PreserveOrientation = po;
+                }
             }
             
             return config;
@@ -306,10 +367,13 @@ namespace ImageWatermarker
             Console.WriteLine("  Command line:     ImageWatermarker.exe <source_folder> <watermark_image> <output_folder> [options]");
             Console.WriteLine();
             Console.WriteLine("Options:");
-            Console.WriteLine("  --outputimagequality=<value>  Output image quality (1-100, default: 95)");
+            Console.WriteLine("  --outputimagequality=<value>  Output image quality (1-100, default: 100)");
             Console.WriteLine("  --opacity=<value>             Watermark opacity (0.0 to 1.0, default: 0.7)");
             Console.WriteLine("  --margin=<pixels>             Margin from edges (default: 20)");
             Console.WriteLine("  --position=<position>         Watermark position (default: BottomRight)");
+            Console.WriteLine("  --width=<pixels>              Target output image width (default: source width)");
+            Console.WriteLine("  --height=<pixels>             Target output image height (default: source height)");
+            Console.WriteLine("  --preserve-orientation        Preserve source orientation when resizing (used with --width and --height)");
             Console.WriteLine();
             Console.WriteLine("Available positions:");
             Console.WriteLine("  TopLeft, TopCenter, TopRight, CenterLeft, CenterCenter,");
@@ -318,6 +382,7 @@ namespace ImageWatermarker
             Console.WriteLine("Examples:");
             Console.WriteLine("  ImageWatermarker.exe \"C:\\Photos\" \"C:\\watermark.png\" \"C:\\Output\"");
             Console.WriteLine("  ImageWatermarker.exe \"C:\\Photos\" \"C:\\logo.png\" \"C:\\Output\" --outputimagequality=80 --opacity=0.5 --margin=30 --position=TopRight");
+            Console.WriteLine("  ImageWatermarker.exe \"C:\\Photos\" \"C:\\logo.png\" \"C:\\Output\" --width=1920 --height=1080 --preserve-orientation");
             Console.WriteLine();
             Console.WriteLine("Supported formats: " + string.Join(", ", WatermarkProcessor.GetSupportedExtensions()));
         }
@@ -331,9 +396,12 @@ namespace ImageWatermarker
         public string SourceFolder { get; set; } = string.Empty;
         public string WatermarkImage { get; set; } = string.Empty;
         public string OutputFolder { get; set; } = string.Empty;
-        public long OutputImageQuality { get; set; } = 95L;
+        public long OutputImageQuality { get; set; } = 100L;
         public float Opacity { get; set; } = 0.7f;
         public int Margin { get; set; } = 20;
         public WatermarkPosition Position { get; set; } = WatermarkPosition.BottomRight;
+        public int? Width { get; set; }
+        public int? Height { get; set; }
+        public bool PreserveOrientation { get; set; }
     }
 }
